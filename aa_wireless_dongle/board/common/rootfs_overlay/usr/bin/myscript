@@ -1,0 +1,433 @@
+#!/usr/bin/env python
+
+import os
+import time
+import signal
+import sys
+import RPi.GPIO as GPIO
+import logging
+from logging.handlers import RotatingFileHandler
+import subprocess
+import re
+import pathlib
+
+switch1 = ''
+switch2 = ''
+switch3 = ''
+switch4 = ''
+mode = ''
+start = [0.0 , 0.0 , 0.0 , 0.0]
+end = [0.0 , 0.0 , 0.0 , 0.0]
+flags = [0,0,0,0]
+press = 2.0
+pro = ''
+pulsaciones = 0
+
+file_pre = '''#!/bin/sh
+
+if [ ! -e /dev/mmcblk0p3 ]
+then
+echo "n
+p
+3
+4194304
+
+t
+3
+07
+w
+" |  fdisk /dev/mmcblk0
+        sh -c 'echo "/dev/mmcblk0p3 /root exfat rw,users,umask=000,nofail 0 0" >> /etc/fstab'
+        sed -i 's/country_code=IN/country_code=ES/' /etc/hostapd.conf
+        xx=$(ls /var/lib/bluetooth/ | awk -F':' '{print $4$5$6 }' | tr [[:upper:]] [[:lower:]] | tr -d '\n')
+        sed -i 's/wpa_passphrase=ConnectAAWirelessDongle/wpa_passphrase=1234567890/' /etc/hostapd.conf
+        sed -i 's/ssid=AAWirelessDongle/ssid=AndroidAuto_'$xx'/' /etc/hostapd.conf
+        reboot
+        exit 0
+fi
+
+if [ $(cat /etc/fstab | grep mmcblk0p3 | wc -l | tr -d '\\n') -eq 0 ]
+then 
+        sh -c 'echo "/dev/mmcblk0p3 /root exfat rw,users,umask=000,nofail 0 0" >> /etc/fstab'
+        mount -a
+fi
+
+if [ ! -f /etc/samba/smb.conf ]
+then
+
+cat <<EOF | tee /etc/samba/smb.conf
+[global]
+        log file = /var/log/samba/%m
+        log level = 1
+        server role = standalone server
+
+[usb1]
+        # This share requires authentication to access
+        path = /mnt/usb1
+        force user = root
+        force group = root
+        read only = no
+        writable = yes
+        inherit permissions = yes
+        
+[usb2]
+        # This share requires authentication to access
+        path = /mnt/usb2
+        force user = root
+        force group = root
+        read only = no
+        writable = yes
+        inherit permissions = yes
+
+[usb3]
+        # This share requires authentication to access
+        path = /mnt/usb3
+        force user = root
+        force group = root
+        read only = no
+        writable = yes
+        inherit permissions = yes
+
+[config]                                              
+        # This share requires authentication to access
+        path = /root/config                           
+        force user = root                             
+        force group = root                            
+        read only = no                                
+        writable = yes                                
+        inherit permissions = yes   
+        
+EOF
+
+        adduser -H -s /sbin/nologin aa
+        echo -e 'raspberrypi\\nraspberrypi' | passwd
+        echo -e 'aa\\naa' | passwd  aa
+        echo -e 'aa\\naa' | smbpasswd -a aa
+
+        if [ $(cat /etc/fstab | grep usb1 | wc -l | tr -d '\\n') -eq 0 ]
+        then 
+                mkdir /mnt/usb1
+                sh -c 'echo "/root/usb1.img /mnt/usb1 exfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
+                mount -a
+        fi
+
+        if [ $(cat /etc/fstab | grep usb2 | wc -l | tr -d '\\n') -eq 0 ]
+        then 
+                mkdir /mnt/usb2
+                sh -c 'echo "/root/usb2.img /mnt/usb2 exfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
+                mount -a
+        fi
+
+        if [ $(cat /etc/fstab | grep usb3 | wc -l | tr -d '\\n') -eq 0 ]
+        then
+                mkdir /mnt/usb3
+                sh -c 'echo "/root/usb3.img /mnt/usb3 exfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
+                mount -a
+        fi
+
+fi
+'''
+
+def charge_files ():
+    f = open('/tmp/pre','w')
+    f.write(file_pre)
+    f.close()
+    os.system('chmod +x /tmp/pre')
+
+def check_string (f,s):
+    f1 = open(f,'r')
+    d = f1.readlines()
+    f1.close()
+    for line in d:
+        if s in line:
+            return True
+    return False
+
+def preinstallation ():
+    subprocess.run('/tmp/pre')
+    
+def set_mode (m):
+    global mode
+    if not os.path.exists('/root/config/mode'):
+        pathlib.Path('/root/config/mode').touch()
+    f = open("/root/config/mode", "w")
+    f.write(m)
+    f.close()
+    logging.info('Cambio a modo '+m)
+    mode = m
+
+def get_mode ():
+    global mode
+    if os.path.exists('/root/config/mode'):
+        f = open("/root/config/mode", "r")
+        o = f.readline().replace("\n","")
+        f.close()
+        return o
+    else:
+        return '0'
+
+def get_device ():
+    f = open("/proc/device-tree/model", "r")
+    o = f.readline().replace("\n","").rstrip()
+    f.close()
+    match o:
+        case str(x) if 'Raspberry Pi 3 Model A Plus Rev 1.0' in x:
+            return 'rpi3a'
+        case str(x) if 'Raspberry Pi 4 Model B Rev 1.1' in x:
+            return 'rpi4'
+        case str(x) if  'Raspberry Pi Zero W Rev 1.1' in x:
+            return 'rpi0w'
+
+def setup_switchs (dev):
+    global switch1
+    global switch2
+    global switch3
+    global switch4
+    GPIO.setmode(GPIO.BCM)
+    match dev:
+      case 'rpi4':
+          switch1 = 0
+          switch2 = 0
+          switch3 = 0
+          switch4 = 0
+      case 'rpi3a':
+          switch1 = 8
+          switch2 = 25
+          switch3 = 24
+          switch4 = 23
+      case 'rpi0w':
+          switch1 = 15
+          switch2 = 24
+          switch3 = 7
+          switch4 = 20
+    if switch1 > 0:
+        GPIO.setup(switch1,GPIO.IN,pull_up_down=GPIO.PUD_UP)
+        GPIO.add_event_detect(switch1,GPIO.BOTH,buttonEventHandler,100)
+    if switch2 > 0:
+        GPIO.setup(switch2,GPIO.IN,pull_up_down=GPIO.PUD_UP)
+        GPIO.add_event_detect(switch2,GPIO.BOTH,buttonEventHandler,100)
+    if switch3 > 0:
+        GPIO.setup(switch3,GPIO.IN,pull_up_down=GPIO.PUD_UP)
+        GPIO.add_event_detect(switch3,GPIO.BOTH,buttonEventHandler,100)
+    if switch4 > 0:
+        GPIO.setup(switch4,GPIO.IN,pull_up_down=GPIO.PUD_UP)
+        GPIO.add_event_detect(switch4,GPIO.BOTH,buttonEventHandler,100)
+
+def mode_androidauto ():
+    global mode
+    logging.info('enter into mode_androidauto')
+    set_mode('1')
+    delete_triggers()
+    subprocess.run(["modprobe","-r", "g_mass_storage"])
+    subprocess.run(["/etc/init.d/S92usb_gadget","restart"])
+    subprocess.run(["/etc/init.d/S93aawgd","restart"])
+
+def mode_debug ():
+    global mode
+    logging.info('enter into mode_idle')
+    set_mode('2')
+    delete_triggers()
+    subprocess.run(["modprobe","-r", "g_mass_storage"])
+    subprocess.run(["/etc/init.d/S93aawgd","stop"])
+    subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
+    #subprocess.run(["modprobe","g_mass_storage", "file=/root/usb0.img" , "stall=0" ,"ro=0", "removable=1"])
+
+def mode_usb1 ():
+    global mode
+    logging.info('enter into mode_usb1')
+    set_mode('3')
+    delete_triggers()
+    subprocess.run(["modprobe","-r", "g_mass_storage"])
+    subprocess.run(["/etc/init.d/S93aawgd","stop"])
+    subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
+    subprocess.run(["modprobe","g_mass_storage", "file=/root/usb1.img" , "stall=0" ,"ro=0", "removable=1"])
+
+def mode_usb2 ():
+    global mode
+    logging.info('enter into mode_usb2')
+    set_mode('4')
+    delete_triggers()
+    subprocess.run(["modprobe","-r", "g_mass_storage"])
+    subprocess.run(["/etc/init.d/S93aawgd","stop"])
+    subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
+    subprocess.run(["modprobe","g_mass_storage", "file=/root/usb2.img" , "stall=0" ,"ro=0", "removable=1"])
+
+def mode_usb3 ():
+    global mode
+    logging.info('enter into mode_usb3')
+    set_mode('5')
+    delete_triggers()
+    subprocess.run(["modprobe","-r", "g_mass_storage"])
+    subprocess.run(["/etc/init.d/S93aawgd","stop"])
+    subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
+    subprocess.run(["modprobe","g_mass_storage", "file=/root/usb3.img" , "stall=0" ,"ro=0", "removable=1"])
+
+def buttonEventHandler (pin):
+     global start
+     global end
+     global pulsaciones
+     global flags
+     if pin == switch1: i = 0
+     if pin == switch2: i = 1
+     if pin == switch3: i = 2
+     if pin == switch4: i = 3
+     if GPIO.input(pin):
+         end[i]=time.time()
+         if (end[i]-start[i]) > press:
+             if sum(flags) == 2 :
+                 if flags[0] == 1 and flags[1] ==1: twolongpress(1,2)
+                 if flags[0] == 1 and flags[2] ==1: twolongpress(1,3)
+                 if flags[0] == 1 and flags[3] ==1: twolongpress(1,4)
+                 if flags[1] == 1 and flags[2] ==1: twolongpress(2,3)
+                 if flags[1] == 1 and flags[3] ==1: twolongpress(2,4)
+                 if flags[2] == 1 and flags[3] ==1: twolongpress(3,4)
+                 flags = [0,0,0,0]
+             if sum(flags) == 1 :
+                 flags[i]=0
+                 longpress(i+1)
+         else:
+             if sum(flags) == 2 :
+                 if flags[0] == 1 and flags[1] ==1 : twoshortpress(1,2)
+                 if flags[0] == 1 and flags[2] ==1 : twoshortpress(1,3)
+                 if flags[0] == 1 and flags[3] ==1 : twoshortpress(1,4)
+                 if flags[1] == 1 and flags[2] ==1 : twoshortpress(2,3)
+                 if flags[1] == 1 and flags[3] ==1 : twoshortpress(2,4)
+                 if flags[2] == 1 and flags[3] ==1 : twoshortpress(3,4)
+                 flags = [0,0,0,0]
+             if sum(flags) == 1 :
+                 flags[i]=0
+                 shortpress(i+1)
+     else:
+         flags[i]=1
+         start[i]=time.time()
+
+def longpress (i):
+    global mode
+    logging.info('long press: '+str(i))
+    if i == 1 and mode == '1':
+        force_reconnect()
+    if i == 2 and mode != '2':
+        mode_debug()
+    if i == 3:
+        clean()
+        subprocess.run('reboot')
+        sys.exit(0)
+    if i == 4:
+        clean()
+        subprocess.run('poweroff')
+        sys.exit(0)    
+    logging.info('boton mode '+mode)
+
+def shortpress (i):
+    global mode
+    logging.info('short press: '+str(i))
+    if i == 1 and mode != '1' :
+        mode_androidauto()
+    if i == 2 and mode != '3':
+        mode_usb1()
+    if i == 3 and mode != '4':
+        mode_usb2()
+    if i == 4 and mode != '5':
+        mode_usb3()
+    logging.info('boton mode '+mode)
+
+def twolongpress (i,j):
+    logging.info('long press: '+str(i)+" : "+str(j))
+    
+def twoshortpress (i,j):
+    logging.info('short press: '+str(i)+" : "+str(j))
+
+def clean ():
+    GPIO.cleanup()
+    logging.shutdown()
+
+def signal_handler(sig, frame):
+    clean()
+    sys.exit(0)
+
+def execute_command ():
+    print()
+    
+def force_reconnect ():
+    delete_triggers()
+    subprocess.run(["/etc/init.d/S92usb_gadget","restart"])
+    subprocess.run(["/etc/init.d/S93aawgd","restart"])
+
+def check_reconnect ():
+    if os.path.exists('/tmp/please_restart'):
+        force_reconnect()
+        os.remove('/tmp/please_restart')
+        
+def check_starting ():
+    if os.path.exists('/tmp/starting'):
+        if int(time.time() - os.path.getmtime('/tmp/starting')) > 30:
+            os.remove('/tmp/starting')
+            force_reconnect()
+            
+def delete_triggers ():
+	if os.path.exists('/tmp/please_restart'):
+		os.remove('/tmp/please_restart')		
+	if os.path.exists('/tmp/starting'):
+		os.remove('/tmp/starting')
+			
+# main function
+def main():
+    global mode
+    charge_files()
+    logging.basicConfig(filename='/tmp/log.txt', encoding='utf-8', level=logging.INFO)
+    
+    mode = get_mode()
+    logging.info('Arranco en modo: ' + mode + ' con el dispositivo ' + str(get_device()) )
+    setup_switchs(get_device())
+    signal.signal(signal.SIGHUP, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGQUIT, signal_handler)
+    signal.signal(signal.SIGABRT, signal_handler)
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    match mode:
+        case '0':
+            preinstallation()
+            m = ''
+            while m == '':
+                m = os.popen("bluetoothctl devices | awk '{print $2}' | tail -1 | tr -d '\n'").readline()
+            set_mode('1')
+        case '1':
+            print()
+        case '2':
+            mode_debug()
+        case '3':
+            mode_usb1()
+        case '4':
+            mode_usb2()
+        case '5':
+            mode_usb3()
+
+    while True:
+        time.sleep(1)
+        if switch1 == '':
+            if os.path.exists('/root/config/1'):
+                os.remove('/root/config/1')
+                shortpress(1)
+        if switch2 == '':
+            if os.path.exists('/root/config/2'):
+                os.remove('/root/config/2')
+                shortpress(2)
+        if switch3 == '':
+            if os.path.exists('/root/config/3'):
+                os.remove('/root/config/3')
+                shortpress(3)
+        if switch4 == '':
+            if os.path.exists('/root/config/4'):
+                os.remove('/root/config/4')
+                shortpress(4)
+        if mode == '1' and (time.strftime("%S",time.gmtime()) == '00' or time.strftime("%S",time.gmtime()) == '10' or time.strftime("%S",time.gmtime()) == '20' or time.strftime("%S",time.gmtime()) == '30' or time.strftime("%S",time.gmtime()) == '40' or time.strftime("%S",time.gmtime()) == '50'):
+            check_reconnect()
+            check_starting()
+
+    #signal.pause()
+    GPIO.cleanup()
+
+if __name__=="__main__":
+    main()

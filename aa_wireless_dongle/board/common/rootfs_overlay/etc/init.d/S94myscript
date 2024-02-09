@@ -1,0 +1,38 @@
+#!/bin/sh
+#
+# Start myscript daemon
+#
+
+DAEMON="myscript"
+PIDFILE="/var/run/$DAEMON.pid"
+
+
+RETVAL=0
+
+case "$1" in
+	start)
+		printf "Starting $DAEMON: "
+		xx=$(ls /var/lib/bluetooth/ | awk -F':' '{print $4$5$6 }' | tr [[:upper:]] [[:lower:]] | tr -d '\n')
+                export ADAPTER_ALIAS=AndroidAuto_$xx
+                export AAWG_WIFI_SSID=AndroidAuto_$xx
+                export AAWG_WIFI_PASSWORD=1234567890
+		start-stop-daemon -S -b -q -m -p "$PIDFILE" -x "/usr/bin/$DAEMON"
+		RETVAL=$?
+		[ $RETVAL = 0 ] && echo "OK" || echo "FAIL"
+		;;
+	stop)
+		printf "Stopping $DAEMON: "
+		start-stop-daemon -K -q -p "$PIDFILE"
+		RETVAL=$?
+		[ $RETVAL = 0 ] && echo "OK" || echo "FAIL"
+		;;
+	restart)
+		$0 stop
+		$0 start
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		;;
+esac
+
+exit $RETVAL
