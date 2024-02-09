@@ -12,6 +12,11 @@ RETVAL=0
 case "$1" in
 	start)
 		printf "Starting $DAEMON: "
+		xx=$(ls /var/lib/bluetooth/ | awk -F':' '{print $4$5$6 }' | tr [[:upper:]] [[:lower:]] | tr -d '\n')
+                export ADAPTER_ALIAS=AndroidAuto_$xx
+                export AAWG_WIFI_SSID=AndroidAuto_$xx
+                export AAWG_WIFI_PASSWORD=1234567890
+		export HEADUNIT_FIRST=1
 		start-stop-daemon -S -b -q -m -p "$PIDFILE" -x "/usr/bin/$DAEMON"
 		RETVAL=$?
 		[ $RETVAL = 0 ] && echo "OK" || echo "FAIL"
