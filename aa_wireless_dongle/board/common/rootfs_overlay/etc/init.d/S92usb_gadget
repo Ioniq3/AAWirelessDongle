@@ -3,9 +3,9 @@
 # Configure USB gadget interfaces
 #
 
-SERIAL_NUMBER="0123456"
-MANUFACTURER="My Own"
-PRODUCT="AA Wireless Dongle"
+SERIAL_NUMBER="01234567890"
+MANUFACTURER="Raspberry Pi"
+PRODUCT="Android Auto Wireless"
 
 ACCESSORY_GADGET_NAME="accessory"
 DEFAULT_GADGET_NAME="default"
