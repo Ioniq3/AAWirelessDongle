@@ -77,7 +77,12 @@ void BluetoothHandler::initAdapter() {
     }
     else {
         m_adapter = BluezAdapterProxy::create(m_connection, adapter_path);
+        if (const char* env_p = std::getenv("ADAPTER_ALIAS")) {
+            m_adapter->alias->set_value(std::getenv("ADAPTER_ALIAS"));
+        }
+        else {
         m_adapter->alias->set_value(ADAPTER_ALIAS);
+        }
     }
 }
 
