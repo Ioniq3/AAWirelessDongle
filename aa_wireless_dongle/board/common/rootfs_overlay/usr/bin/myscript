@@ -217,7 +217,6 @@ def mode_androidauto ():
     global mode
     logging.info('enter into mode_androidauto')
     set_mode('1')
-    delete_triggers()
     subprocess.run(["modprobe","-r", "g_mass_storage"])
     subprocess.run(["/etc/init.d/S92usb_gadget","restart"])
     subprocess.run(["/etc/init.d/S93aawgd","restart"])
@@ -226,7 +225,6 @@ def mode_debug ():
     global mode
     logging.info('enter into mode_idle')
     set_mode('2')
-    delete_triggers()
     subprocess.run(["modprobe","-r", "g_mass_storage"])
     subprocess.run(["/etc/init.d/S93aawgd","stop"])
     subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
@@ -236,7 +234,6 @@ def mode_usb1 ():
     global mode
     logging.info('enter into mode_usb1')
     set_mode('3')
-    delete_triggers()
     subprocess.run(["modprobe","-r", "g_mass_storage"])
     subprocess.run(["/etc/init.d/S93aawgd","stop"])
     subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
@@ -246,7 +243,6 @@ def mode_usb2 ():
     global mode
     logging.info('enter into mode_usb2')
     set_mode('4')
-    delete_triggers()
     subprocess.run(["modprobe","-r", "g_mass_storage"])
     subprocess.run(["/etc/init.d/S93aawgd","stop"])
     subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
@@ -256,7 +252,6 @@ def mode_usb3 ():
     global mode
     logging.info('enter into mode_usb3')
     set_mode('5')
-    delete_triggers()
     subprocess.run(["modprobe","-r", "g_mass_storage"])
     subprocess.run(["/etc/init.d/S93aawgd","stop"])
     subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
@@ -345,30 +340,19 @@ def signal_handler(sig, frame):
     clean()
     sys.exit(0)
 
+def signal_handler2(sig, frame):
+    subprocess.run(["/etc/init.d/S93aawgd","stop"])
+    time.sleep(1)
+    subprocess.run(["/etc/init.d/S92usb_gadget","restart"])
+    time.sleep(1)
+    subprocess.run(["/etc/init.d/S93aawgd","start"])
+
 def execute_command ():
     print()
     
 def force_reconnect ():
-    delete_triggers()
     subprocess.run(["/etc/init.d/S92usb_gadget","restart"])
     subprocess.run(["/etc/init.d/S93aawgd","restart"])
-
-def check_reconnect ():
-    if os.path.exists('/tmp/please_restart'):
-        force_reconnect()
-        os.remove('/tmp/please_restart')
-        
-def check_starting ():
-    if os.path.exists('/tmp/starting'):
-        if int(time.time() - os.path.getmtime('/tmp/starting')) > 30:
-            os.remove('/tmp/starting')
-            force_reconnect()
-            
-def delete_triggers ():
-	if os.path.exists('/tmp/please_restart'):
-		os.remove('/tmp/please_restart')		
-	if os.path.exists('/tmp/starting'):
-		os.remove('/tmp/starting')
 			
 # main function
 def main():
@@ -380,7 +364,7 @@ def main():
     logging.info('Arranco en modo: ' + mode + ' con el dispositivo ' + str(get_device()) )
     setup_switchs(get_device())
     signal.signal(signal.SIGHUP, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler2)
     signal.signal(signal.SIGQUIT, signal_handler)
     signal.signal(signal.SIGABRT, signal_handler)
     signal.signal(signal.SIGALRM, signal_handler)
@@ -406,25 +390,22 @@ def main():
 
     while True:
         time.sleep(1)
-        if switch1 == '':
+        if switch1 == 0:
             if os.path.exists('/root/config/1'):
                 os.remove('/root/config/1')
                 shortpress(1)
-        if switch2 == '':
+        if switch2 == 0:
             if os.path.exists('/root/config/2'):
                 os.remove('/root/config/2')
                 shortpress(2)
-        if switch3 == '':
+        if switch3 == 0:
             if os.path.exists('/root/config/3'):
                 os.remove('/root/config/3')
                 shortpress(3)
-        if switch4 == '':
+        if switch4 == 0:
             if os.path.exists('/root/config/4'):
                 os.remove('/root/config/4')
                 shortpress(4)
-        if mode == '1' and (time.strftime("%S",time.gmtime()) == '00' or time.strftime("%S",time.gmtime()) == '10' or time.strftime("%S",time.gmtime()) == '20' or time.strftime("%S",time.gmtime()) == '30' or time.strftime("%S",time.gmtime()) == '40' or time.strftime("%S",time.gmtime()) == '50'):
-            check_reconnect()
-            check_starting()
 
     #signal.pause()
     GPIO.cleanup()
