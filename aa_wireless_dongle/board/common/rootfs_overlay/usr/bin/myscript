@@ -124,7 +124,7 @@ EOF
                 sh -c 'echo "/root/usb3.img /mnt/usb3 exfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
                 mount -a
         fi
-
+rm /root/config/mode
 fi
 '''
 
