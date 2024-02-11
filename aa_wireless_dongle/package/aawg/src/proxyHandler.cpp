@@ -127,7 +127,7 @@ void AAWProxy::handleClient(int server_sock) {
       if (rc == 0) {
       Logger::instance()->info("Server socket timeout 30s\n");
       Logger::instance()->info("Restart android auto\n");
-      popen("kill -2 $(pidof -s myscript","r");
+      popen("kill -2 $(ps | grep -m 1 myscript | awk '{print $1}')","r");
       exit(1);
        } 
       if (rc > 0) { 
@@ -169,7 +169,7 @@ void AAWProxy::handleClient(int server_sock) {
 
     Logger::instance()->info("Forwarding stopped\n");
     Logger::instance()->info("Restart android auto\n");
-    popen("kill -2 $(pidof -s myscript","r");
+    popen("kill -2 $(ps | grep -m 1 myscript | awk '{print $1}')","r");
     exit(1);
     
 }
