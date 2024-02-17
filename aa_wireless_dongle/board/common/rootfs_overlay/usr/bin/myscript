@@ -39,7 +39,7 @@ w
 " |  fdisk /dev/mmcblk0
         sh -c 'echo "/dev/mmcblk0p3 /root exfat rw,users,umask=000,nofail 0 0" >> /etc/fstab'
         sed -i 's/country_code=IN/country_code=ES/' /etc/hostapd.conf
-        xx=$(ls /var/lib/bluetooth/ | awk -F':' '{print $4$5$6 }' | tr [[:upper:]] [[:lower:]] | tr -d '\n')
+        xx=$(ls /var/lib/bluetooth/ | awk -F':' '{print $4$5$6 }' | tr [[:upper:]] [[:lower:]] | tr -d '\\n')
         sed -i 's/wpa_passphrase=ConnectAAWirelessDongle/wpa_passphrase=1234567890/' /etc/hostapd.conf
         sed -i 's/ssid=AAWirelessDongle/ssid=AndroidAuto_'$xx'/' /etc/hostapd.conf
         reboot
@@ -125,7 +125,7 @@ EOF
                 mount -a
         fi
 rm /root/config/mode
-xx=$(ls /var/lib/bluetooth/ | awk -F':' '{print $4$5$6 }' | tr [[:upper:]] [[:lower:]] | tr -d '\n')
+xx=$(ls /var/lib/bluetooth/ | awk -F':' '{print $4$5$6 }' | tr [[:upper:]] [[:lower:]] | tr -d '\\n')
 echo 'ADAPTER_ALIAS=AndroidAuto_'$xx > /root/.env
 echo 'AWG_WIFI_SSID=AndroidAuto_'$xx >> /root/.env
 echo 'AAAWG_WIFI_PASSWORD=1234567890' >> /root/.env
