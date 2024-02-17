@@ -125,6 +125,11 @@ EOF
                 mount -a
         fi
 rm /root/config/mode
+xx=$(ls /var/lib/bluetooth/ | awk -F':' '{print $4$5$6 }' | tr [[:upper:]] [[:lower:]] | tr -d '\n')
+echo 'ADAPTER_ALIAS=AndroidAuto_'$xx > /root/.env
+echo 'AWG_WIFI_SSID=AndroidAuto_'$xx >> /root/.env
+echo 'AAAWG_WIFI_PASSWORD=1234567890' >> /root/.env
+echo 'HEADUNIT_FIRST=1' >> /root/.env
 fi
 '''
 
