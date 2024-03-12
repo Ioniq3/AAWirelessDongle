@@ -112,6 +112,32 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
 void AAWProxy::handleClient(int server_sock) {
     struct sockaddr client_address;
     socklen_t client_addresslen = sizeof(client_address);
+
+    if (std::getenv("AAWG_FIRST_CONNECTION_RESTART") != nullptr) {
+      int rc;
+      struct timeval timeout;
+
+      while (true) {
+        fd_set rfds;
+        timeout.tv_sec  = 30;
+        timeout.tv_usec = 0;
+
+        FD_ZERO(&rfds);
+        FD_SET(server_sock, &rfds);
+
+        rc = select(server_sock+1,&rfds,NULL,NULL,&timeout);
+        if (rc == 0) {
+        Logger::instance()->info("Server socket timeout 30s\n");
+        Logger::instance()->info("Restart android auto\n");
+        popen("kill -2 $(ps | grep -m 1 myscript | awk '{print $1}')","r");
+        exit(1);
+         } 
+        if (rc > 0) { 
+         break;
+        }
+      }
+    }
+     
     if ((m_tcp_fd = accept(server_sock, &client_address, &client_addresslen)) < 0) {
         close(server_sock);
         Logger::instance()->info("accept failed: %s\n", strerror(errno));
@@ -147,6 +173,11 @@ void AAWProxy::handleClient(int server_sock) {
     m_tcp_fd = -1;
 
     Logger::instance()->info("Forwarding stopped\n");
+    if (std::getenv("AAWG_TCP_RESTART") != nullptr) { 
+      Logger::instance()->info("Restart android auto\n");
+      popen("kill -2 $(ps | grep -m 1 myscript | awk '{print $1}')","r");
+      exit(1);
+    }
 }
 
 std::optional<std::thread> AAWProxy::startServer(int32_t port) {
@@ -161,6 +192,17 @@ std::optional<std::thread> AAWProxy::startServer(int32_t port) {
     if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
         Logger::instance()->info("setsockopt failed: %s\n", strerror(errno));
         return std::nullopt;
+    }
+
+    if (std::getenv("AAWG_TCP_TIMEOUT") != nullptr) { 
+      struct timeval tv = {
+          .tv_sec = 30
+      };
+
+      if (setsockopt(server_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
+          Logger::instance()->info("setsockopt failed timeout set: %s\n", strerror(errno));
+          return std::nullopt;
+      }
     }
 
     struct sockaddr_in address;
