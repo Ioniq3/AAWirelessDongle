@@ -12,6 +12,7 @@
 
 #include "common.h"
 #include "usb.h"
+#include "bluetoothHandler.h"
 #include "proxyHandler.h"
 
 ssize_t AAWProxy::readFully(int fd, unsigned char *buffer, size_t nbyte) {
@@ -89,7 +90,13 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
 
     while (!should_exit) {
         ssize_t len = read_message ? readMessage(read_fd, buffer, buffer_len) : read(read_fd, buffer, buffer_len);
-        Logger::instance()->info("%d bytes read from %s\n", len, read_name.c_str());
+        if (len <= 0) {
+            // Start logging read/write details if there is an error.
+            m_log_communication = true;
+        }
+        if (m_log_communication) {
+            Logger::instance()->info("%d bytes read from %s\n", len, read_name.c_str());
+        }
         if (len < 0) {
             Logger::instance()->info("Read from %s failed: %s\n", read_name.c_str(), strerror(errno));
             break;
@@ -99,7 +106,13 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
         }
 
         ssize_t wlen = write(write_fd, buffer, len);
-        Logger::instance()->info("%d bytes written to %s\n", wlen, write_name.c_str());
+        if (wlen <= 0) {
+            // Start logging read/write details if there is an error.
+            m_log_communication = true;
+        }
+        if (m_log_communication) {
+            Logger::instance()->info("%d bytes written to %s\n", wlen, write_name.c_str());
+        }
         if (wlen < 0) {
             Logger::instance()->info("Write to %s failed: %s\n", write_name.c_str(), strerror(errno));
             break;
@@ -148,8 +161,13 @@ void AAWProxy::handleClient(int server_sock) {
 
     Logger::instance()->info("Tcp server accepted connection\n");
 
+    // Phone connected via TCP, we can stop retrying bluetooth connection
+    BluetoothHandler::instance().stopConnectWithRetry();
+
     if (std::getenv("AAWG_CONNECTION_WAIT_FOR_ACCESSORY") == nullptr) {
-        UsbManager::instance().enableDefaultAndWaitForAccessory();
+        if (!UsbManager::instance().enableDefaultAndWaitForAccessory(std::chrono::seconds(10))) {
+            return;
+        }
     }
 
     Logger::instance()->info("Opening usb accessory\n");
