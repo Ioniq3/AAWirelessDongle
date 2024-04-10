@@ -148,7 +148,9 @@ void AAWProxy::handleClient(int server_sock) {
 
     Logger::instance()->info("Tcp server accepted connection\n");
 
-    UsbManager::instance().enableDefaultAndWaitForAccessory();    
+    if (Config::instance()->getConnectionStrategy() != ConnectionStrategy::USB_FIRST) {
+        UsbManager::instance().enableDefaultAndWaitForAccessory();
+    }
 
     Logger::instance()->info("Opening usb accessory\n");
     if ((m_usb_fd = open("/dev/usb_accessory", O_RDWR)) < 0) {
