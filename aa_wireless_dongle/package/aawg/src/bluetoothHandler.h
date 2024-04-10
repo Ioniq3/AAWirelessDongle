@@ -1,8 +1,5 @@
 #pragma once
 
-#include <optional>
-#include <thread>
-
 #include "bluetoothCommon.h"
 
 class BluezAdapterProxy;
@@ -15,11 +12,8 @@ public:
     static BluetoothHandler& instance();
 
     void init();
-    void powerOn();
+    void connect();
     void powerOff();
-
-    std::optional<std::thread> connectWithRetry();
-    void stopConnectWithRetry();
 
 private:
     BluetoothHandler() {};
@@ -36,10 +30,6 @@ private:
 
     void startAdvertising();
     void stopAdvertising();
-
-    void retryConnectLoop();
-
-    std::shared_ptr<std::promise<void>> connectWithRetryPromise;
 
     std::shared_ptr<DBus::Dispatcher> m_dispatcher;
     std::shared_ptr<DBus::Connection> m_connection;
