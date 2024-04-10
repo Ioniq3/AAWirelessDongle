@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <unistd.h>
-#include <signal.h>
 #include <fcntl.h>
 #include <string.h>
 #include <netinet/in.h>
@@ -13,12 +12,7 @@
 
 #include "common.h"
 #include "usb.h"
-#include "bluetoothHandler.h"
 #include "proxyHandler.h"
-
-void empty_signal_handler(int signal) {
-    // Empty. We don't want to do anything but interrupt the thread.
-}
 
 ssize_t AAWProxy::readFully(int fd, unsigned char *buffer, size_t nbyte) {
     size_t remaining_bytes = nbyte;
@@ -94,17 +88,8 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
     }
 
     while (!should_exit) {
-        // Read
         ssize_t len = read_message ? readMessage(read_fd, buffer, buffer_len) : read(read_fd, buffer, buffer_len);
-
-        if (len <= 0) {
-            // Start logging read/write details if there is an error.
-            m_log_communication = true;
-        }
-        if (m_log_communication) {
             Logger::instance()->info("%d bytes read from %s\n", len, read_name.c_str());
-        }
-
         if (len < 0) {
             Logger::instance()->info("Read from %s failed: %s\n", read_name.c_str(), strerror(errno));
             break;
@@ -112,49 +97,47 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
         else if (len == 0) {
             break;
         }
-        else if (should_exit) {
-            break;
-        }
 
-        // Write
         ssize_t wlen = write(write_fd, buffer, len);
-
-        if (wlen <= 0) {
-            // Start logging read/write details if there is an error.
-            m_log_communication = true;
-        }
-        if (m_log_communication) {
             Logger::instance()->info("%d bytes written to %s\n", wlen, write_name.c_str());
-        }
-
         if (wlen < 0) {
             Logger::instance()->info("Write to %s failed: %s\n", write_name.c_str(), strerror(errno));
             break;
         }
-        else if (should_exit) {
-            break;
-        }
     }
 
-    stopForwarding(should_exit);
-}
-
-void AAWProxy::stopForwarding(std::atomic<bool>& should_exit) {
-    Logger::instance()->info("Interrupting threads to stop forwarding\n");
     should_exit = true;
-
-    if (m_usb_tcp_thread) {
-        pthread_kill(m_usb_tcp_thread->native_handle(), SIGUSR1);
-    }
-
-    if (m_tcp_usb_thread) {
-        pthread_kill(m_tcp_usb_thread->native_handle(), SIGUSR1);
-    }
 }
 
 void AAWProxy::handleClient(int server_sock) {
     struct sockaddr client_address;
     socklen_t client_addresslen = sizeof(client_address);
+
+    if (std::getenv("AAWG_FIRST_CONNECTION_RESTART") != nullptr) {
+      int rc;
+      struct timeval timeout;
+
+      while (true) {
+        fd_set rfds;
+        timeout.tv_sec  = 30;
+        timeout.tv_usec = 0;
+
+        FD_ZERO(&rfds);
+        FD_SET(server_sock, &rfds);
+
+        rc = select(server_sock+1,&rfds,NULL,NULL,&timeout);
+        if (rc == 0) {
+        Logger::instance()->info("Server socket timeout 30s\n");
+        Logger::instance()->info("Restart android auto\n");
+        popen("kill -2 $(ps | grep -m 1 myscript | awk '{print $1}')","r");
+        exit(1);
+         } 
+        if (rc > 0) { 
+         break;
+        }
+      }
+    }    
+    
     if ((m_tcp_fd = accept(server_sock, &client_address, &client_addresslen)) < 0) {
         close(server_sock);
         Logger::instance()->info("accept failed: %s\n", strerror(errno));
@@ -165,14 +148,7 @@ void AAWProxy::handleClient(int server_sock) {
 
     Logger::instance()->info("Tcp server accepted connection\n");
 
-    // Phone connected via TCP, we can stop retrying bluetooth connection
-    BluetoothHandler::instance().stopConnectWithRetry();
-
-    if (Config::instance()->getConnectionStrategy() != ConnectionStrategy::USB_FIRST) {
-        if (!UsbManager::instance().enableDefaultAndWaitForAccessory(std::chrono::seconds(10))) {
-            return;
-        }
-    }
+    UsbManager::instance().enableDefaultAndWaitForAccessory();    
 
     Logger::instance()->info("Opening usb accessory\n");
     if ((m_usb_fd = open("/dev/usb_accessory", O_RDWR)) < 0) {
@@ -180,38 +156,13 @@ void AAWProxy::handleClient(int server_sock) {
         return;
     }
 
-    // Set timeout on the TCP socket
-    struct timeval tv = {
-        .tv_sec = 10,
-        .tv_usec = 0,
-    };
-
-    if (setsockopt(m_tcp_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
-        Logger::instance()->info("setsockopt failed: %s\n", strerror(errno));
-        return;
-    }
-
-    // Setup signal handler
-    struct sigaction sa;
-    sa.sa_handler = empty_signal_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    if (sigaction(SIGUSR1, &sa, NULL)) {
-        Logger::instance()->info("Adding signal handler failed: %s\n", strerror(errno));
-    }
-
     Logger::instance()->info("Forwarding data between TCP and USB\n");
     std::atomic<bool> should_exit = false;
-    m_usb_tcp_thread = std::thread(&AAWProxy::forward, this, ProxyDirection::USB_to_TCP, std::ref(should_exit));
-    m_tcp_usb_thread = std::thread(&AAWProxy::forward, this, ProxyDirection::TCP_to_USB, std::ref(should_exit));
+    std::thread usb_tcp(&AAWProxy::forward, this, ProxyDirection::USB_to_TCP, std::ref(should_exit));
+    std::thread tcp_usb(&AAWProxy::forward, this, ProxyDirection::TCP_to_USB, std::ref(should_exit));
 
-    m_usb_tcp_thread->join();
-    m_usb_tcp_thread = std::nullopt;
-
-    m_tcp_usb_thread->join();
-    m_tcp_usb_thread = std::nullopt;
-
-    signal(SIGUSR1, SIG_DFL);
+    usb_tcp.join();
+    tcp_usb.join();
 
     close(m_usb_fd);
     m_usb_fd = -1;
@@ -220,6 +171,11 @@ void AAWProxy::handleClient(int server_sock) {
     m_tcp_fd = -1;
 
     Logger::instance()->info("Forwarding stopped\n");
+    if (std::getenv("AAWG_TCP_RESTART") != nullptr) { 
+        Logger::instance()->info("Restart android auto\n");
+        popen("kill -2 $(ps | grep -m 1 myscript | awk '{print $1}')","r");
+        exit(1);
+    }
 }
 
 std::optional<std::thread> AAWProxy::startServer(int32_t port) {
@@ -236,6 +192,18 @@ std::optional<std::thread> AAWProxy::startServer(int32_t port) {
         return std::nullopt;
     }
 
+    if (std::getenv("AAWG_TCP_TIMEOUT") != nullptr) { 
+      struct timeval tv = {
+          .tv_sec = 30
+      };
+
+      if (setsockopt(server_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
+          Logger::instance()->info("setsockopt failed timeout set: %s\n", strerror(errno));
+          return std::nullopt;
+      }
+    }
+
+    
     struct sockaddr_in address;
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
