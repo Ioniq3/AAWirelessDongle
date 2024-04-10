@@ -230,6 +230,7 @@ void BluetoothHandler::init() {
 
     initAdapter();
     exportProfiles();
+    
     if (isDongleMode) {
         startAdvertising();
     }
@@ -239,6 +240,7 @@ void BluetoothHandler::connect() {
     if (!m_adapter) {
         return;
     }
+    
     setPower(true);
     setPairable(true);
     connectDevice();
