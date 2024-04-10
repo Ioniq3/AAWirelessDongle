@@ -197,15 +197,8 @@ void BluetoothHandler::connectDevice() {
 
         std::shared_ptr<DBus::ObjectProxy> bluezDevice = m_connection->create_object_proxy(BLUEZ_BUS_NAME, device_path);
         DBus::MethodProxy connectProfile = *(bluezDevice->create_method<void(std::string)>(INTERFACE_BLUEZ_DEVICE, "ConnectProfile"));
-        DBus::MethodProxy disconnect = *(bluezDevice->create_method<void()>(INTERFACE_BLUEZ_DEVICE, "Disconnect"));
-
-        std::shared_ptr<DBus::PropertyProxy<bool>> deviceConnected = bluezDevice->create_property<bool>(INTERFACE_BLUEZ_DEVICE, "Connected");
 
         try {
-            if (deviceConnected) {
-                Logger::instance()->info("Bluetooth device already connected, disconnecting\n");
-                disconnect();
-            }
             connectProfile(isDongleMode ? "" : HSP_AG_UUID);
             Logger::instance()->info("Bluetooth connected to the device\n");
             if (!isDongleMode) {
@@ -223,24 +216,6 @@ void BluetoothHandler::connectDevice() {
     }
 }
 
-void BluetoothHandler::retryConnectLoop() {
-    bool should_exit = false;
-    std::future<void> connectWithRetryFuture = connectWithRetryPromise->get_future();
-
-    while (!should_exit) {
-        connectDevice();
-
-        if (connectWithRetryFuture.wait_for(std::chrono::seconds(10)) == std::future_status::ready) {
-            should_exit = true;
-            connectWithRetryPromise = nullptr;
-        }
-    }
-
-    if (Config::instance()->getConnectionStrategy() != ConnectionStrategy::DONGLE_MODE) {
-        BluetoothHandler::instance().powerOff();
-    }
-}
-
 void BluetoothHandler::init() {
     // DBus::set_logging_function( DBus::log_std_err );
     // DBus::set_log_level( SL_TRACE );
@@ -248,38 +223,25 @@ void BluetoothHandler::init() {
     m_dispatcher = DBus::StandaloneDispatcher::create();
     m_connection = m_dispatcher->create_connection( DBus::BusType::SYSTEM );
 
-    m_adapterAlias = (Config::instance()->getConnectionStrategy() == ConnectionStrategy::DONGLE_MODE) ? ADAPTER_ALIAS_DONGLE : ADAPTER_ALIAS;
+    Logger::instance()->info("Unique Name: %s\n", m_connection->unique_name().c_str());
+
+    const bool isDongleMode = (Config::instance()->getConnectionStrategy() == ConnectionStrategy::DONGLE_MODE);
+    m_adapterAlias = isDongleMode ? ADAPTER_ALIAS_DONGLE : ADAPTER_ALIAS;
 
     initAdapter();
     exportProfiles();
-}
-
-void BluetoothHandler::powerOn() {
-    if (!m_adapter) {
-        return;
-    }
-
-    setPower(true);
-    setPairable(true);
-
-    if (Config::instance()->getConnectionStrategy() == ConnectionStrategy::DONGLE_MODE) {
+    if (isDongleMode) {
         startAdvertising();
     }
 }
 
-std::optional<std::thread> BluetoothHandler::connectWithRetry() {
+void BluetoothHandler::connect() {
     if (!m_adapter) {
-        return std::nullopt;
+        return;
     }
-
-    connectWithRetryPromise = std::make_shared<std::promise<void>>();
-    return std::thread(&BluetoothHandler::retryConnectLoop, this);
-}
-
-void BluetoothHandler::stopConnectWithRetry() {
-    if (connectWithRetryPromise) {
-        connectWithRetryPromise->set_value();
-    }
+    setPower(true);
+    setPairable(true);
+    connectDevice();
 }
 
 void BluetoothHandler::powerOff() {
@@ -287,8 +249,5 @@ void BluetoothHandler::powerOff() {
         return;
     }
 
-    if (Config::instance()->getConnectionStrategy() == ConnectionStrategy::DONGLE_MODE) {
-        stopAdvertising();
-    }
     setPower(false);
 }
