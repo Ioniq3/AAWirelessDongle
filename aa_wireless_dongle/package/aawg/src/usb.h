@@ -1,5 +1,4 @@
 #include <string>
-#include <chrono>
 
 class UsbManager {
 public:
