@@ -1,5 +1,6 @@
 #include <dirent.h>
 #include <string.h>
+#include <unistd.h>
 #include <future>
 
 #include "common.h"
@@ -67,7 +68,7 @@ void UsbManager::disableGadget(std::string gadgetName) {
 
 void UsbManager::switchToAccessoryGadget() {
     disableGadget(defaultGadgetName);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 0.1 second, keep the gadget disabled for a short time to let the host recognize the change
+    usleep(100000); // 0.1 second, keep the gadget disabled for a short time to let the host recognize the change
     enableGadget(accessoryGadgetName);
 
     Logger::instance()->info("USB Manager: Switched to accessory gadget from default\n");
@@ -80,18 +81,10 @@ void UsbManager::disableGadget() {
     Logger::instance()->info("USB Manager: Disabled all USB gadgets\n");
 }
 
-bool UsbManager::enableDefaultAndWaitForAccessory(std::chrono::milliseconds timeout) {
-    std::shared_ptr<std::promise<void>> accessoryPromise = std::make_shared<std::promise<void>>();
-    std::weak_ptr<std::promise<void>> accessoryPromiseWeak = accessoryPromise;
+void UsbManager::enableDefaultAndWaitForAccessory() {
+    std::promise<void> accessoryPromise;
 
-    UeventMonitor::instance().addHandler([accessoryPromiseWeak](UeventEnv env) {
-        std::shared_ptr<std::promise<void>> accessoryPromise = accessoryPromiseWeak.lock();
-
-        // If the promise is no longer active, nothing to do.
-        if (!accessoryPromise) {
-            return true;
-        }
-
+    UeventMonitor::instance().addHandler([&accessoryPromise](UeventEnv env) {
         if (auto it = env.find("DEVNAME"); it == env.end() || it->second != "usb_accessory") {
             return false;
         }
@@ -103,26 +96,15 @@ bool UsbManager::enableDefaultAndWaitForAccessory(std::chrono::milliseconds time
         // Got an accessory start event
         Logger::instance()->info("USB Manager: Received accessory start request\n");
         UsbManager::instance().switchToAccessoryGadget();
-        accessoryPromise->set_value();
+        accessoryPromise.set_value();
 
         return true;
     });
 
+    disableGadget(accessoryGadgetName);
     enableGadget(defaultGadgetName);
 
     Logger::instance()->info("USB Manager: Enabled default gadget\n");
 
-    if (timeout == std::chrono::milliseconds(0)) {
-        accessoryPromise->get_future().wait();
-        return true;
-    } else {
-        std::future_status status = accessoryPromise->get_future().wait_for(timeout);
-
-        if (status == std::future_status::ready) {
-            return true;
-        } else {
-            Logger::instance()->info("USB Manager: Timeout waiting for accessory start request\n");
-            return false;
-        }
-    }
+    accessoryPromise.get_future().wait();
 }
