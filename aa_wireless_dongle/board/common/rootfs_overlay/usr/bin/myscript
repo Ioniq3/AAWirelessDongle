@@ -29,20 +29,20 @@ then
 echo "n
 p
 3
-4194304
+61184000
 t
 3
-07
+83
 w
 " |  fdisk /dev/mmcblk0
-        sh -c 'echo "/dev/mmcblk0p3 /root exfat rw,users,umask=000,nofail 0 0" >> /etc/fstab'
+        sh -c 'echo "/dev/mmcblk0p3 /root ext4 defaults,nofail 0 0" >> /etc/fstab'
         sed -i 's/country_code=IN/country_code=ES/' /etc/hostapd.conf
         reboot
         exit 0
 fi
 if [ $(cat /etc/fstab | grep mmcblk0p3 | wc -l | tr -d '\\n') -eq 0 ]
 then 
-        sh -c 'echo "/dev/mmcblk0p3 /root exfat rw,users,umask=000,nofail 0 0" >> /etc/fstab'
+        sh -c 'echo "/dev/mmcblk0p3 /root ext4 defaults,nofail 0 0" >> /etc/fstab'
         mount -a
 fi
 if [ ! -f /etc/samba/smb.conf ]
