@@ -16,6 +16,9 @@ jobs:
         - raspberrypizero2w
         - raspberrypi4
         - raspberrypi3a
+        - raspberrypizero2w_64
+        - raspberrypi4_64
+        - raspberrypi3a_64
 
     runs-on: ubuntu-latest
 
