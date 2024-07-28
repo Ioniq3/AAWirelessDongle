@@ -35,6 +35,21 @@ services:
     environment:
       - BOARD_NAME=raspberrypi4
 
+  rpi02w64:
+    <<: *generate_image
+    environment:
+      - BOARD_NAME=raspberrypizero2w_64
+
+  rpi3a64:
+    <<: *generate_image
+    environment:
+      - BOARD_NAME=raspberrypi3a_64
+
+  rpi464:
+    <<: *generate_image
+    environment:
+      - BOARD_NAME=raspberrypi4_64
+
 volumes:
   dl:
   output:
