@@ -79,7 +79,7 @@ cat <<EOF | tee /etc/samba/smb.conf
         inherit permissions = yes
 [config]
         # This share requires authentication to access
-        path = /root/config
+        path = /mnt/root/config
         force user = root
         force group = root
         read only = no
@@ -94,22 +94,22 @@ EOF
         if [ $(cat /etc/fstab | grep usb1 | wc -l | tr -d '\\n') -eq 0 ]
         then 
                 mkdir /mnt/usb1
-                sh -c 'echo "/root/usb1.img /mnt/usb1 vfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
+                sh -c 'echo "/mnt/root/usb1.img /mnt/usb1 vfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
                 mount -a
         fi
         if [ $(cat /etc/fstab | grep usb2 | wc -l | tr -d '\\n') -eq 0 ]
         then 
                 mkdir /mnt/usb2
-                sh -c 'echo "/root/usb2.img /mnt/usb2 vfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
+                sh -c 'echo "/mnt/root/usb2.img /mnt/usb2 vfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
                 mount -a
         fi
         if [ $(cat /etc/fstab | grep usb3 | wc -l | tr -d '\\n') -eq 0 ]
         then
                 mkdir /mnt/usb3
-                sh -c 'echo "/root/usb3.img /mnt/usb3 vfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
+                sh -c 'echo "/mnt/root/usb3.img /mnt/usb3 vfat rw,users,umask=000,nofail 0 2" >> /etc/fstab'
                 mount -a
         fi
-rm /root/config/mode
+rm /mnt/root/config/mode
 fi
 '''
 
@@ -133,9 +133,9 @@ def preinstallation ():
 
 def set_mode (m):
     global mode
-    if not os.path.exists('/root/config/mode'):
-        pathlib.Path('/root/config/mode').touch()
-    f = open("/root/config/mode", "w")
+    if not os.path.exists('/mnt/root/config/mode'):
+        pathlib.Path('/mnt/root/config/mode').touch()
+    f = open("/mnt/root/config/mode", "w")
     f.write(m)
     f.close()
     logging.info('Cambio a modo '+m)
@@ -143,8 +143,8 @@ def set_mode (m):
 
 def get_mode ():
     global mode
-    if os.path.exists('/root/config/mode'):
-        f = open("/root/config/mode", "r")
+    if os.path.exists('/mnt/root/config/mode'):
+        f = open("/mnt/root/config/mode", "r")
         o = f.readline().replace("\n","")
         f.close()
         return o
@@ -213,7 +213,7 @@ def mode_debug ():
     subprocess.run(["modprobe","-r", "g_mass_storage"])
     subprocess.run(["/etc/init.d/S93aawgd","stop"])
     subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
-    #subprocess.run(["modprobe","g_mass_storage", "file=/root/usb0.img" , "stall=0" ,"ro=0", "removable>
+    #subprocess.run(["modprobe","g_mass_storage", "file=/mnt/root/usb0.img" , "stall=0" ,"ro=0", "removable=1"])
 
 def mode_usb1 ():
     global mode
@@ -222,7 +222,7 @@ def mode_usb1 ():
     subprocess.run(["modprobe","-r", "g_mass_storage"])
     subprocess.run(["/etc/init.d/S93aawgd","stop"])
     subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
-    subprocess.run(["modprobe","g_mass_storage", "file=/root/usb1.img" , "stall=0" ,"ro=0", "removable=>
+    subprocess.run(["modprobe","g_mass_storage", "file=/mnt/root/usb1.img" , "stall=0" ,"ro=0", "removable=1"])
 
 def mode_usb2 ():
     global mode
@@ -231,7 +231,8 @@ def mode_usb2 ():
     subprocess.run(["modprobe","-r", "g_mass_storage"])
     subprocess.run(["/etc/init.d/S93aawgd","stop"])
     subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
-    subprocess.run(["modprobe","g_mass_storage", "file=/root/usb2.img" , "stall=0" ,"ro=0", "removable=>
+    subprocess.run(["modprobe","g_mass_storage", "file=/mnt/root/usb2.img" , "stall=0" ,"ro=0", "removable=1"])
+
 
 def mode_usb3 ():
     global mode
@@ -240,7 +241,7 @@ def mode_usb3 ():
     subprocess.run(["modprobe","-r", "g_mass_storage"])
     subprocess.run(["/etc/init.d/S93aawgd","stop"])
     subprocess.run(["/etc/init.d/S92usb_gadget","stop"])
-    subprocess.run(["modprobe","g_mass_storage", "file=/root/usb3.img" , "stall=0" ,"ro=0", "removable=>
+    subprocess.run(["modprobe","g_mass_storage", "file=/mnt/root/usb3.img" , "stall=0" ,"ro=0", "removable=1"])
 
 def buttonEventHandler (pin):
      global start
@@ -360,7 +361,7 @@ def main():
             preinstallation()
             m = ''
             while m == '':
-                m = os.popen("bluetoothctl devices | awk '{print $2}' | tail -1 | tr -d '\n'").readline>
+                m = os.popen("bluetoothctl devices | awk '{print $2}' | tail -1 | tr -d '\n'").readline
             set_mode('1')
         case '1':
             print()
@@ -376,20 +377,20 @@ def main():
     while True:
         time.sleep(1)
         if switch1 == 0:
-            if os.path.exists('/root/config/1'):
-                os.remove('/root/config/1')
+            if os.path.exists('/mnt/root/config/1'):
+                os.remove('/mnt/root/config/1')
                 shortpress(1)
         if switch2 == 0:
-            if os.path.exists('/root/config/2'):
-                os.remove('/root/config/2')
+            if os.path.exists('/mnt/root/config/2'):
+                os.remove('/mnt/root/config/2')
                 shortpress(2)
         if switch3 == 0:
-            if os.path.exists('/root/config/3'):
-                os.remove('/root/config/3')
+            if os.path.exists('/mnt/root/config/3'):
+                os.remove('/mnt/root/config/3')
                 shortpress(3)
         if switch4 == 0:
-            if os.path.exists('/root/config/4'):
-                os.remove('/root/config/4')
+            if os.path.exists('/mnt/root/config/4'):
+                os.remove('/mnt/root/config/4')
                 shortpress(4)
 
     #signal.pause()
